@@ -21,6 +21,8 @@
 
 #include <unistd.h>
 #include <sys/types.h>
+#include <pwd.h>
+#include <grp.h>
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
