@@ -195,8 +195,6 @@ runInteractiveProcess (char *const args[],
             gid_t suppl_gid = childGroup ? *childGroup : getgid();
             if ( getpwuid_r(*childUser, &pw, buf, buf_len, &res) != 0) {
                 childFailed(forkCommunicationFds[1], forkGetpwuidFailed);
-            } else if (res == NULL) {
-                childFailed(forkCommunicationFds[1], forkGetpwuidFailed);
             }
             if ( initgroups(res->pw_name, suppl_gid) != 0) {
                 childFailed(forkCommunicationFds[1], forkInitgroupsFailed);
