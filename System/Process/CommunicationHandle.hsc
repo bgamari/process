@@ -29,16 +29,19 @@ import GHC.IO.Device as IODevice
 import GHC.IO.Encoding (getLocaleEncoding)
 import GHC.IO.IOMode
 import GHC.IO.Windows.Handle (fromHANDLE, Io(), NativeHandle())
-# if defined(__IO_MANAGER_WINIO__)
+#  if defined(__IO_MANAGER_WINIO__)
 import GHC.IO.SubSystem ((<!>))
 import GHC.IO.Handle.Windows (handleToHANDLE)
 import GHC.Event.Windows (associateHandle')
-# endif
+#  endif
 
 #include <fcntl.h>     /* for _O_BINARY */
 
 #else
-import System.Posix ( Fd(..), fdToHandle, handleToFd, FdOption(..), setFdOption )
+import System.Posix
+  ( Fd(..), fdToHandle, handleToFd
+  , FdOption(..), setFdOption
+  )
 #endif
 
 import System.Process.Internals

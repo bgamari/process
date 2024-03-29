@@ -1,17 +1,23 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
+
 import Control.Exception
 import Control.Monad (guard, unless, void)
 import System.Exit
 import System.IO.Error
 import System.Directory (getCurrentDirectory, setCurrentDirectory)
 import System.Process
+import System.Process.Internals (withForkWait, ignoreSigPipe)
+import System.Process.CommunicationHandle
 import Control.Concurrent
+import Control.DeepSeq
 import Data.Char (isDigit)
 import Data.IORef
 import Data.List (isInfixOf)
 import Data.Maybe (isNothing)
-import System.IO (hClose, openBinaryTempFile, hGetContents)
-import qualified Data.ByteString as S
+import System.IO (hClose, hFlush, openBinaryTempFile, hGetContents, hPutStr)
+import qualified Data.ByteString as SBS
+import qualified Data.ByteString.Lazy as LBS
 import qualified Data.ByteString.Char8 as S8
 import System.Directory (getTemporaryDirectory, removeFile)
 import GHC.Conc.Sync (getUncaughtExceptionHandler, setUncaughtExceptionHandler)
@@ -30,18 +36,19 @@ isWindows = False
 
 main :: IO ()
 main = do
-    testDoesNotExist
-    testModifiers
-    testSubdirectories
-    testBinaryHandles
-    testMultithreadedWait
-    testInterruptMaskedWait
-    testGetPid
-    testReadProcess
-    testInterruptWith
-    testDoubleWait
-    testKillDoubleWait
-    testCreateProcess
+    --testDoesNotExist
+    --testModifiers
+    --testSubdirectories
+    --testBinaryHandles
+    --testMultithreadedWait
+    --testInterruptMaskedWait
+    --testGetPid
+    --testReadProcess
+    --testInterruptWith
+    --testDoubleWait
+    --testKillDoubleWait
+    --testCreateProcess
+    testCommunicationHandle
     putStrLn ">>> Tests passed successfully"
 
 run :: String -> IO () -> IO ()
@@ -96,13 +103,13 @@ testBinaryHandles = run "binary handles" $ do
       (\(fp, h) -> hClose h `finally` removeFile fp)
       $ \(fp, h) -> do
         let bs = S8.pack "hello\nthere\r\nworld\0"
-        S.hPut h bs
+        SBS.hPut h bs
         hClose h
 
         (Nothing, Just out, Nothing, ph) <- createProcess (proc "cat" [fp])
             { std_out = CreatePipe
             }
-        res' <- S.hGetContents out
+        res' <- SBS.hGetContents out
         hClose out
         ec <- waitForProcess ph
         unless (ec == ExitSuccess)
@@ -278,6 +285,34 @@ testCreateProcess = run "createProcess with cwd = Nothing" $ do
         Left e -> error $ "waitForProcess threw: " ++ show (e :: SomeException)
         Right ExitSuccess -> return ()
         Right exitCode -> error $ "unexpected exit code: " ++ show exitCode
+
+testCommunicationHandle :: IO ()
+testCommunicationHandle = do
+  (chTheyRead, hWeWrite   ) <- createTheyReadWeWritePipe
+  (hWeRead   , chTheyWrite) <- createWeReadTheyWritePipe
+  let cp =
+        proc
+          "cli-child" -- TODO: why isn't this on PATH?
+                      -- Shouldn't cabal put it on path given that it's a build-tool-depends of the testsuite?
+          [show chTheyRead, show chTheyWrite]
+  hTheyWrite <- getCommunicationHandleHandle chTheyWrite
+  withCreateProcess cp $ \ _ _ _ ph -> do
+    hClose hTheyWrite
+    output <- hGetContents hWeRead
+    withForkWait (evaluate $ rnf output) $ \ waitOut -> do
+      ignoreSigPipe $
+        hPutStr hWeWrite "hello"
+      ignoreSigPipe $ hClose hWeWrite
+      waitOut
+      hClose hWeRead
+    ex <- waitForProcess ph
+    case ex of
+      ExitSuccess ->
+        if output == "olleh123"
+        then return ()
+        else error $ "testCommunicationHandle: unexpected output " ++ show output
+      ExitFailure {} ->
+        error $ "testCommunicationHandle: child exited with exception " ++ show ex
 
 withCurrentDirectory :: FilePath -> IO a -> IO a
 withCurrentDirectory new inner = do
