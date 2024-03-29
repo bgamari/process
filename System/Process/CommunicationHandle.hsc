@@ -39,9 +39,11 @@ import GHC.Event.Windows (associateHandle')
 
 #else
 import System.Posix
-  ( Fd(..), fdToHandle, handleToFd
+  ( Fd(..), fdToHandle
   , FdOption(..), setFdOption
   )
+import GHC.IO.FD (FD(fdFD))
+import GHC.IO.Handle.FD (handleToFd)
 #endif
 
 import System.Process.Internals
@@ -220,7 +222,7 @@ create_pipe oursTheirs = do
 #  if defined(__IO_MANAGER_WINIO__)
           handleToHANDLE hThem
 #  else
-          handleToFd hThem
+          (Fd . fdFD <$> handleToFd hThem)
 #  endif
       return (hUs, chThem)
 #endif
@@ -231,7 +233,7 @@ create_pipe oursTheirs = do
 associateToCurrentProcess :: Handle -> IO ()
 associateToCurrentProcess _h = do
 #if !defined(mingw32_HOST_OS)
-  fd <- handleToFd _h
+  fd <- Fd . fdFD <$> handleToFd _h
   -- Don't allow the child process to inherit a parent file descriptor
   -- (such inheritance happens by default on Unix).
   setFdOption fd CloseOnExec True
